@@ -1,15 +1,20 @@
 package main
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"crypto/sha256"
 	_ "encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
-	"golang.org/x/crypto/pbkdf2"
 	"io"
 	"log"
 	"net"
 	"os"
+
+	"golang.org/x/crypto/pbkdf2"
 )
 
 var salt = []byte{
@@ -101,7 +106,7 @@ func readPassphrase(filename string) (string, error) {
 
 // deriveKey generates AES key using PBKDF2
 func deriveKey(passphrase string) []byte {
-	key := pbkdf2.Key([]byte(passphrase), salt, 10000, 32, sha256.New)
+	key := pbkdf2.Key([]byte(passphrase), salt, 10000, 32, sha256.New) //32 byte, 256 bits
 	//keyHex := fmt.Sprintf("%x", key)
 	//fmt.Println("Derived Key (hex):", keyHex)
 	return key
@@ -209,68 +214,112 @@ func handleConnection(conn net.Conn, key []byte) {
 
 // encryptReader returns an io.Reader that encrypts data using AES-GCM
 func encryptReader(reader io.Reader, key []byte) io.Reader {
-	//block, err := aes.NewCipher(key)
-	//if err != nil {
-	//	panic(err)
-	//}
-	//
-	//gcm, err := cipher.NewGCM(block)
-	//if err != nil {
-	//	panic(err)
-	//}
-	//
-	//nonce := make([]byte, gcm.NonceSize())
-	//if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-	//	panic(err)
-	//}
-	//
-	//return cipher.StreamReader{
-	//	S: cipher.NewGCM(block),
-	//	R: io.MultiReader(strings.NewReader(string(nonce)), reader),
-	//}
-	return &loggingReader{r: reader, prefix: "Encrypted"}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		log.Fatalf("Error creating AES cipher: %v", err)
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		log.Fatalf("Error creating GCM cipher: %v", err)
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		log.Fatalf("Error generating nonce: %v", err)
+	}
+
+	// Encrypt data as it's read from the input stream
+	pr, pw := io.Pipe()
+
+	go func() {
+		buf := make([]byte, 8192) // Adjust buffer size as needed
+		for {
+			n, err := reader.Read(buf)
+			if err != nil && err != io.EOF {
+				log.Fatalf("Error reading input: %v", err)
+			}
+			if n == 0 {
+				break
+			}
+
+			// Log the content of buf
+			log.Printf("Buffer content: %s", buf[:n])
+			encrypted := gcm.Seal(nonce, nonce, buf[:n], nil)
+			if _, err := pw.Write(encrypted); err != nil {
+				log.Fatalf("Error writing encrypted data: %v", err)
+			}
+		}
+		pw.Close()
+	}()
+
+	return pr
+	// return &loggingReader{r: reader, prefix: "Encrypted"}
 }
 
 // decryptReader returns an io.Reader that decrypts data using AES-GCM
 func decryptReader(reader io.Reader, key []byte) io.Reader {
-	//block, err := aes.NewCipher(key)
-	//if err != nil {
-	//	panic(err)
-	//}
-	//
-	//gcm, err := cipher.NewGCM(block)
-	//if err != nil {
-	//	panic(err)
-	//}
-	//
-	//nonceSize := gcm.NonceSize()
-	//buf := make([]byte, nonceSize)
-	//if _, err := io.ReadFull(reader, buf); err != nil {
-	//	panic(err)
-	//}
-	//
-	//nonce := buf[:nonceSize]
-	//return cipher.StreamReader{
-	//	S: gcm,
-	//	R: io.MultiReader(strings.NewReader(""), io.LimitReader(reader, int64(len(buf)))),
-	//}
-	return &loggingReader{r: reader, prefix: "Decrypted"}
-}
-
-type loggingReader struct {
-	r      io.Reader
-	prefix string
-}
-
-// Read reads data from the underlying reader and logs it.
-func (lr *loggingReader) Read(p []byte) (n int, err error) {
-	// Read from the underlying reader
-	n, err = lr.r.Read(p)
-
-	// Log the data flow
-	if n > 0 {
-		log.Printf("%s: %s", lr.prefix, string(p[:n]))
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		log.Fatalf("Error creating AES cipher: %v", err)
 	}
 
-	return n, err
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		log.Fatalf("Error creating GCM cipher: %v", err)
+	}
+
+	nonceSize := gcm.NonceSize()
+	buf := make([]byte, nonceSize)
+	if _, err := io.ReadFull(reader, buf); err != nil {
+		log.Fatalf("Error reading nonce: %v", err)
+	}
+	nonce := buf[:nonceSize]
+
+	pr, pw := io.Pipe()
+
+	go func() {
+		buf := make([]byte, 8192) // Adjust buffer size as needed
+		for {
+			n, err := reader.Read(buf)
+			if err != nil && err != io.EOF {
+				pw.CloseWithError(err)
+				return
+			}
+			if n == 0 {
+				break
+			}
+			decrypted, err := gcm.Open(nil, nonce, buf[:n], nil)
+			if err != nil {
+				pw.CloseWithError(errors.New("decryption error: " + err.Error()))
+				return
+			}
+			if _, err := pw.Write(decrypted); err != nil {
+				pw.CloseWithError(err)
+				return
+			}
+		}
+		pw.Close()
+	}()
+
+	return pr
+	// return &loggingReader{r: reader, prefix: "Encrypted"}
 }
+
+// type loggingReader struct {
+// 	r      io.Reader
+// 	prefix string
+// }
+
+// // Read reads data from the underlying reader and logs it.
+// func (lr *loggingReader) Read(p []byte) (n int, err error) {
+// 	// Read from the underlying reader
+// 	n, err = lr.r.Read(p)
+
+// 	// Log the data flow
+// 	if n > 0 {
+// 		log.Printf("%s: %s", lr.prefix, string(p[:n]))
+// 	}
+
+// 	return n, err
+// }

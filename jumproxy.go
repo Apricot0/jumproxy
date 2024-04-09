@@ -17,7 +17,27 @@ var salt = []byte{
 	0x89, 0xd4, 0x7a, 0x1f, 0x65, 0x38, 0x2b, 0x90,
 }
 
+var logFile *os.File
+
+func init() {
+	// Open or create the log file
+	var err error
+	logFile, err = os.OpenFile("logfile.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Printf("Failed to open log file: %v", err)
+	}
+
+	// Set log output to the file
+	log.SetOutput(logFile)
+}
+
 func main() {
+	defer func(logFile *os.File) {
+		err := logFile.Close()
+		if err != nil {
+
+		}
+	}(logFile)
 	// Command-line flag definitions
 	listenPort := flag.Int("l", 0, "Listen port for reverse-proxy mode")
 	keyFile := flag.String("k", "", "Path to file containing the passphrase")
@@ -92,14 +112,14 @@ func runReverseProxy(listenPort int, key []byte) {
 	// Listen on the specified port
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", listenPort))
 	if err != nil {
-		fmt.Printf("Error listening: %v\n", err)
+		log.Printf("Error listening: %v\n", err)
 		return
 	}
 	// Defer closing the listener to ensure it's closed when the function exits
 	defer func() {
 		err := listener.Close()
 		if err != nil {
-			fmt.Printf("Error closing listener: %v\n", err)
+			log.Printf("Error closing listener: %v\n", err)
 		}
 	}()
 

@@ -86,7 +86,7 @@ func readPassphrase(filename string) (string, error) {
 
 // deriveKey generates AES key using PBKDF2
 func deriveKey(passphrase string) []byte {
-	key := pbkdf2.Key([]byte(passphrase), salt, 10000, 32, sha256.New)//32 byte, 256 bits
+	key := pbkdf2.Key([]byte(passphrase), salt, 10000, 32, sha256.New) //32 byte, 256 bits
 	//keyHex := fmt.Sprintf("%x", key)
 	//fmt.Println("Derived Key (hex):", keyHex)
 	return key
@@ -222,7 +222,10 @@ func encryptReader(reader io.Reader, key []byte) io.Reader {
 			if n == 0 {
 				break
 			}
-			encrypted := gcm.Seal(nil, nonce, buf[:n], nil)
+
+			// Log the content of buf
+			log.Printf("Buffer content: %s", buf[:n])
+			encrypted := gcm.Seal(nonce, nonce, buf[:n], nil)
 			if _, err := pw.Write(encrypted); err != nil {
 				log.Fatalf("Error writing encrypted data: %v", err)
 			}

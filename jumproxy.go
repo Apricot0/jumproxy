@@ -247,6 +247,7 @@ func encryptReader(reader io.Reader, key []byte) io.Reader {
 			// Log the content of buf
 			log.Printf("Encrypt Buffer content: %s", buf[:n])
 			encrypted := gcm.Seal(nonce, nonce, buf[:n], nil)
+			log.Printf("After encrypt content: %d", encrypted)
 			if _, err := pw.Write(encrypted); err != nil {
 				log.Fatalf("Error writing encrypted data: %v", err)
 			}
@@ -276,7 +277,7 @@ func decryptReader(reader io.Reader, key []byte) io.Reader {
 		log.Fatalf("Error reading nonce: %v", err)
 	}
 	nonce := buf[:nonceSize]
-	log.Printf("%d", nonce)
+	log.Printf("Decrypt using nonce: %d", nonce)
 
 	pr, pw := io.Pipe()
 
@@ -291,6 +292,7 @@ func decryptReader(reader io.Reader, key []byte) io.Reader {
 			if n == 0 {
 				break
 			}
+			log.Printf("Before decrypt content: %d", buf[:n])
 			decrypted, err := gcm.Open(nonce, nonce, buf[:n], nil)
 			if err != nil {
 				pw.CloseWithError(errors.New("decryption error: " + err.Error()))

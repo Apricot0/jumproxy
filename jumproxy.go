@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	_ "encoding/hex"
 	"flag"
 	"fmt"
@@ -257,6 +258,13 @@ func encryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 		log.Printf("Before Encrypted %s\n", string(buf[:n]))
 		encrypted := gcm.Seal(nil, nonce, buf[:n], nil)
 		log.Printf("After Encrypted %d\n", encrypted)
+		encryptedSize := make([]byte, 8) // Assuming 64-bit integer for size
+		binary.BigEndian.PutUint64(encryptedSize, uint64(len(encrypted)))
+		_, err = dst.Write(encryptedSize)
+		if err != nil {
+			log.Printf("ET: Error writing size")
+			return err
+		}
 		_, err = dst.Write(encrypted)
 		if err != nil {
 			log.Printf("ET: Error writing %v: %v", buf, err)
@@ -292,7 +300,8 @@ func decryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 		log.Printf("DT: Error reading nonce: %v", err)
 	}
 	log.Printf("Nonce: %d; Key: %d\n", nonce, key)
-	buf := make([]byte, 2468)
+	//buf := make([]byte, 2468)
+	buf := make([]byte, 8)
 	var content []byte
 
 	for {
@@ -305,8 +314,13 @@ func decryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 			log.Printf("DT: Break because n = 0")
 			break
 		}
-		log.Printf("Before Decrypted: %d\n", buf[:n])
-		decrypted, err := gcm.Open(nil, nonce, buf[:n], nil)
+		encryptedSize := binary.BigEndian.Uint64(buf)
+		encrypted := make([]byte, encryptedSize)
+		_, err = io.ReadFull(src, encrypted)
+		//log.Printf("Before Decrypted: %d\n", buf[:n])
+		log.Printf("Before Decrypted: %d\n", encrypted)
+		//decrypted, err := gcm.Open(nil, nonce, buf[:n], nil)
+		decrypted, err := gcm.Open(nil, nonce, encrypted, nil)
 		log.Printf("After Decrypted: %s\n", decrypted)
 		if err != nil {
 			log.Printf("DT: error")

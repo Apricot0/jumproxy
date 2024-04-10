@@ -159,7 +159,8 @@ func runClient(destination string, port string, key []byte) {
 	// Start a goroutine to copy data from standard input to the server connection,
 	// encrypting the data using the provided key
 	go func() {
-		_, err := io.Copy(conn, encryptReader(os.Stdin, key))
+		//_, err := io.Copy(conn, encryptReader(os.Stdin, key))
+		err := encryptTransmission(os.Stdin, conn, key)
 		if err != nil {
 			fmt.Printf("Error sending data to server: %v\n", err)
 		}
@@ -167,7 +168,8 @@ func runClient(destination string, port string, key []byte) {
 
 	// Copy data from the server connection to standard output,
 	// decrypting the data using the provided key
-	_, err = io.Copy(os.Stdout, decryptReader(conn, key))
+	//_, err = io.Copy(os.Stdout, decryptReader(conn, key))
+	err = decryptTransmission(conn, os.Stdout, key)
 	if err != nil {
 		fmt.Printf("Error receiving data from server: %v\n", err)
 	}
@@ -200,16 +202,120 @@ func handleConnection(conn net.Conn, key []byte) {
 	}(serverConn)
 
 	go func() {
-		_, err := io.Copy(serverConn, decryptReader(conn, key))
+		//_, err := io.Copy(serverConn, decryptReader(conn, key))
+		err := decryptTransmission(conn, serverConn, key)
 		if err != nil {
 			fmt.Printf("Error copying data from client to server: %v\n", err)
 		}
 	}()
 
-	_, err = io.Copy(conn, encryptReader(serverConn, key))
+	//_, err = io.Copy(conn, encryptReader(serverConn, key))
+	err = encryptTransmission(serverConn, conn, key)
 	if err != nil {
 		fmt.Printf("Error copying data from server to client: %v\n", err)
 	}
+}
+
+func encryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
+	//block, err := aes.NewCipher(key)
+	//if err != nil {
+	//	log.Fatalf("Error creating AES cipher: %v", err)
+	//}
+	//
+	//gcm, err := cipher.NewGCM(block)
+	//if err != nil {
+	//	log.Fatalf("Error creating GCM cipher: %v", err)
+	//}
+	//
+	//nonce := make([]byte, gcm.NonceSize())
+	//if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+	//	return err
+	//}
+	//
+	//// Write the nonce to the beginning of the stream
+	//if _, err := dst.Write(nonce); err != nil {
+	//	return err
+	//}
+	//
+	//stream := cipher.NewCTR(block, nonce)
+	//writer := &cipher.StreamWriter{S: stream, W: dst}
+	//
+	//if _, err := io.Copy(writer, src); err != nil {
+	//	return err
+	//}
+	//
+	buf := make([]byte, 2468)
+	var content []byte
+
+	for {
+		n, err := src.Read(buf)
+		if err != nil && err != io.EOF {
+			return err
+		}
+		if n == 0 {
+			break
+		}
+
+		_, err = dst.Write(buf[:n])
+		if err != nil {
+			return err
+		}
+
+		content = append(content, buf[:n]...)
+		if err == io.EOF {
+			break
+		}
+	}
+	fmt.Printf("Copied content: %s\n", content)
+	return nil
+}
+
+func decryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
+	//block, err := aes.NewCipher(key)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//nonce := make([]byte, 12) // AES-GCM nonce size is 12 bytes
+	//if _, err := io.ReadFull(src, nonce); err != nil {
+	//	return err
+	//}
+	//
+	//aesgcm, err := cipher.NewGCM(block)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//stream := cipher.NewCTR(block, nonce)
+	//reader := &cipher.StreamReader{S: stream, R: src}
+	//
+	//if _, err := io.Copy(dst, reader); err != nil {
+	//	return err
+	//}
+	buf := make([]byte, 2468)
+	var content []byte
+
+	for {
+		n, err := src.Read(buf)
+		if err != nil && err != io.EOF {
+			return err
+		}
+		if n == 0 {
+			break
+		}
+
+		_, err = dst.Write(buf[:n])
+		if err != nil {
+			return err
+		}
+
+		content = append(content, buf[:n]...)
+		if err == io.EOF {
+			break
+		}
+	}
+	print(content)
+	return nil
 }
 
 // encryptReader returns an io.Reader that encrypts data using AES-GCM

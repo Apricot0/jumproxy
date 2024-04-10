@@ -62,12 +62,12 @@ func main() {
 	}
 
 	// Generate AES key using PBKDF2
-	aesKey := deriveKey(passphrase)
+	aesKey := generateKey(passphrase)
 
 	// If listenPort is provided, run in reverse-proxy mode
 	if *listenPort != 0 {
 		fmt.Printf("Running in reverse-proxy mode on port %d\n", *listenPort)
-		runReverseProxy(*listenPort, aesKey)
+		reverseProxy(*listenPort, aesKey)
 	} else {
 		// Otherwise, run in client mode
 		args := flag.Args()
@@ -78,7 +78,7 @@ func main() {
 		destination := args[0]
 		port := args[1]
 		fmt.Printf("Running in client mode, connecting to %s:%s\n", destination, port)
-		runClient(destination, port, aesKey)
+		client(destination, port, aesKey)
 	}
 }
 
@@ -104,16 +104,16 @@ func readPassphrase(filename string) (string, error) {
 	return passphrase, nil
 }
 
-// deriveKey generates AES key using PBKDF2
-func deriveKey(passphrase string) []byte {
+// generateKey generates AES key using PBKDF2
+func generateKey(passphrase string) []byte {
 	key := pbkdf2.Key([]byte(passphrase), salt, 10000, 32, sha256.New) //32 byte, 256 bits
 	//keyHex := fmt.Sprintf("%x", key)
 	//fmt.Println("Derived Key (hex):", keyHex)
 	return key
 }
 
-// runReverseProxy runs jumproxy in reverse-proxy mode
-func runReverseProxy(listenPort int, key []byte) {
+// reverseProxy runs jumproxy in reverse-proxy mode
+func reverseProxy(listenPort int, key []byte) {
 	// Listen on the specified port
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", listenPort))
 	if err != nil {
@@ -140,8 +140,8 @@ func runReverseProxy(listenPort int, key []byte) {
 	}
 }
 
-// runClient runs jumproxy in client mode
-func runClient(destination string, port string, key []byte) {
+// client runs jumproxy in client mode
+func client(destination string, port string, key []byte) {
 	fmt.Printf("Connecting to %s\n", destination)
 
 	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", destination, port))
@@ -199,6 +199,7 @@ func handleConnection(conn net.Conn, key []byte) {
 		if err != nil {
 			fmt.Printf("Error closing server connection: %v\n", err)
 		}
+		fmt.Printf("Connection closed with %s\n", serverConn.RemoteAddr())
 	}(serverConn)
 
 	go func() {
@@ -341,112 +342,6 @@ func decryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 	log.Printf("Transmission Complete Copied content: %s\n", content)
 	return nil
 }
-
-//// encryptReader returns an io.Reader that encrypts data using AES-GCM
-//func encryptReader(reader io.Reader, key []byte) io.Reader {
-//	block, err := aes.NewCipher(key)
-//	if err != nil {
-//		log.Fatalf("Error creating AES cipher: %v", err)
-//	}
-//
-//	gcm, err := cipher.NewGCM(block)
-//	if err != nil {
-//		log.Fatalf("Error creating GCM cipher: %v", err)
-//	}
-//
-//	nonce := make([]byte, gcm.NonceSize())
-//	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-//		log.Fatalf("Error generating nonce: %v", err)
-//	}
-//
-//	log.Printf("Encrypt using nonce: %d , key: %d", nonce, key)
-//	// Encrypt data as it's read from the input stream
-//	pr, pw := io.Pipe()
-//
-//	go func() {
-//		buf := make([]byte, 8192) // Adjust buffer size as needed
-//		for {
-//			n, err := reader.Read(buf)
-//			if err != nil && err != io.EOF {
-//				log.Fatalf("Error reading input: %v", err)
-//			}
-//			if n == 0 {
-//				break
-//			}
-//
-//			// Log the content of buf
-//			log.Printf("Encrypt Buffer content: %s", buf[:n])
-//			encrypted := gcm.Seal(nonce, nonce, buf[:n], nil)
-//			log.Printf("After encrypt content: %d", encrypted)
-//			if _, err := pw.Write(encrypted); err != nil {
-//				log.Fatalf("Error writing encrypted data: %v", err)
-//			}
-//		}
-//		pw.Close()
-//	}()
-//
-//	return pr
-//	//return &loggingReader{r: reader, prefix: "Encrypted"}
-//}
-//
-//// decryptReader returns an io.Reader that decrypts data using AES-GCM
-//func decryptReader(reader io.Reader, key []byte) io.Reader {
-//	block, err := aes.NewCipher(key)
-//	if err != nil {
-//		log.Fatalf("Error creating AES cipher: %v", err)
-//	}
-//
-//	gcm, err := cipher.NewGCM(block)
-//	if err != nil {
-//		log.Fatalf("Error creating GCM cipher: %v", err)
-//	}
-//
-//	nonceSize := gcm.NonceSize()
-//
-//	pr, pw := io.Pipe()
-//
-//	go func() {
-//		buf := make([]byte, 8192) // Adjust buffer size as needed
-//		for {
-//			nonceBuf := make([]byte, nonceSize)
-//			if _, err := io.ReadFull(reader, nonceBuf); err != nil {
-//				if err == io.EOF {
-//					// Handle EOF error
-//					log.Println("Nonce EOF reached. Ending decryption process.")
-//					return
-//				}
-//				log.Printf("Error reading nonce: %v", err)
-//				continue
-//			}
-//			nonce := nonceBuf[:nonceSize]
-//			log.Printf("Decrypt using nonce: %d , key: %d", nonce, key)
-//			n, err := reader.Read(buf)
-//			if err != nil && err != io.EOF {
-//				pw.CloseWithError(err)
-//				return
-//			}
-//			if n == 0 {
-//				break
-//			}
-//			log.Printf("Before decrypt content: %d", buf[:n])
-//			decrypted, err := gcm.Open(nil, nonce, buf[:n], nil)
-//			if err != nil {
-//				pw.CloseWithError(errors.New("decryption error: " + err.Error()))
-//				return
-//			}
-//
-//			if _, err := pw.Write(decrypted); err != nil {
-//				pw.CloseWithError(err)
-//				return
-//			}
-//			log.Printf("Decrypted content: %s\n", decrypted)
-//		}
-//		pw.Close()
-//	}()
-//
-//	return pr
-//	//return &loggingReader{r: reader, prefix: "Encrypted"}
-//}
 
 //type loggingReader struct {
 //	r      io.Reader

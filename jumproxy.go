@@ -264,7 +264,7 @@ func encryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 			break
 		}
 	}
-	fmt.Printf("Copied content: %s\n", content)
+	fmt.Printf("Transmission Complete Copied content: %s\n", content)
 	return nil
 }
 
@@ -314,7 +314,7 @@ func decryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 			break
 		}
 	}
-	print(content)
+	fmt.Printf("Transmission Complete Copied content: %s\n", content)
 	return nil
 }
 

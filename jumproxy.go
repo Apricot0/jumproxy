@@ -228,14 +228,18 @@ func encryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return err
+		if err == io.EOF {
+			// Handle EOF error
+			log.Println("Nonce EOF reached. Ending decryption process.")
+		}
+		log.Printf("Error reading nonce: %v", err)
 	}
 
 	// Write the nonce to the beginning of the stream
 	if _, err := dst.Write(nonce); err != nil {
 		return err
 	}
-
+	log.Printf("Nonce: %d; Key: %d\n", nonce, key)
 	buf := make([]byte, 2468)
 	var content []byte
 
@@ -247,7 +251,9 @@ func encryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 		if n == 0 {
 			break
 		}
+		log.Printf("Before Encrypted %s\n", string(buf[:n]))
 		encrypted := gcm.Seal(nil, nonce, buf[:n], nil)
+		log.Printf("After Encrypted %d\n", encrypted)
 		_, err = dst.Write(encrypted)
 		if err != nil {
 			return err
@@ -274,8 +280,13 @@ func decryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 	}
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := io.ReadFull(src, nonce); err != nil {
-		return err
+		if err == io.EOF {
+			// Handle EOF error
+			log.Println("Nonce EOF reached. Ending decryption process.")
+		}
+		log.Printf("Error reading nonce: %v", err)
 	}
+	log.Printf("Nonce: %d; Key: %d\n", nonce, key)
 	buf := make([]byte, 2468)
 	var content []byte
 
@@ -287,7 +298,9 @@ func decryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 		if n == 0 {
 			break
 		}
+		log.Printf("Before Decrypted: %d\n", buf[:n])
 		decrypted, err := gcm.Open(nil, nonce, buf[:n], nil)
+		log.Printf("After Decrypted: %s\n", decrypted)
 		if err != nil {
 			return err
 		}

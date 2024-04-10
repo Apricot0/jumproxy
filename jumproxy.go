@@ -281,7 +281,7 @@ func decryptReader(reader io.Reader, key []byte) io.Reader {
 			nonceBuf := make([]byte, nonceSize)
 			if _, err := io.ReadFull(reader, nonceBuf); err != nil {
 				log.Printf("Error reading nonce: %v", err)
-				break
+				continue
 			}
 			nonce := nonceBuf[:nonceSize]
 			log.Printf("Decrypt using nonce: %d , key: %d", nonce, key)

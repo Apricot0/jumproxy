@@ -254,7 +254,7 @@ func encryptReader(reader io.Reader, key []byte) io.Reader {
 	}()
 
 	return pr
-	// return &loggingReader{r: reader, prefix: "Encrypted"}
+	//return &loggingReader{r: reader, prefix: "Encrypted"}
 }
 
 // decryptReader returns an io.Reader that decrypts data using AES-GCM
@@ -275,6 +275,7 @@ func decryptReader(reader io.Reader, key []byte) io.Reader {
 		log.Fatalf("Error reading nonce: %v", err)
 	}
 	nonce := buf[:nonceSize]
+	log.Printf("%d", nonce)
 
 	pr, pw := io.Pipe()
 
@@ -294,6 +295,7 @@ func decryptReader(reader io.Reader, key []byte) io.Reader {
 				pw.CloseWithError(errors.New("decryption error: " + err.Error()))
 				return
 			}
+
 			if _, err := pw.Write(decrypted); err != nil {
 				pw.CloseWithError(err)
 				return
@@ -303,23 +305,23 @@ func decryptReader(reader io.Reader, key []byte) io.Reader {
 	}()
 
 	return pr
-	// return &loggingReader{r: reader, prefix: "Encrypted"}
+	//return &loggingReader{r: reader, prefix: "Encrypted"}
 }
 
-// type loggingReader struct {
-// 	r      io.Reader
-// 	prefix string
-// }
-
-// // Read reads data from the underlying reader and logs it.
-// func (lr *loggingReader) Read(p []byte) (n int, err error) {
-// 	// Read from the underlying reader
-// 	n, err = lr.r.Read(p)
-
-// 	// Log the data flow
-// 	if n > 0 {
-// 		log.Printf("%s: %s", lr.prefix, string(p[:n]))
-// 	}
-
-// 	return n, err
-// }
+//type loggingReader struct {
+//	r      io.Reader
+//	prefix string
+//}
+//
+//// Read reads data from the underlying reader and logs it.
+//func (lr *loggingReader) Read(p []byte) (n int, err error) {
+//	// Read from the underlying reader
+//	n, err = lr.r.Read(p)
+//
+//	// Log the data flow
+//	if n > 0 {
+//		log.Printf("%s: %s", lr.prefix, string(p[:n]))
+//	}
+//
+//	return n, err
+//}

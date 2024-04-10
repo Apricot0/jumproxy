@@ -280,6 +280,11 @@ func decryptReader(reader io.Reader, key []byte) io.Reader {
 		for {
 			nonceBuf := make([]byte, nonceSize)
 			if _, err := io.ReadFull(reader, nonceBuf); err != nil {
+				if err == io.EOF {
+					// Handle EOF error
+					log.Println("Nonce EOF reached. Ending decryption process.")
+					return
+				}
 				log.Printf("Error reading nonce: %v", err)
 				continue
 			}

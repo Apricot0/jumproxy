@@ -232,11 +232,12 @@ func encryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 			// Handle EOF error
 			log.Println("Nonce EOF reached. Ending decryption process.")
 		}
-		log.Printf("Error reading nonce: %v", err)
+		log.Printf("ET: Error reading nonce: %v", err)
 	}
 
 	// Write the nonce to the beginning of the stream
 	if _, err := dst.Write(nonce); err != nil {
+		log.Printf("ET: Error writing nonce: %v", err)
 		return err
 	}
 	log.Printf("Nonce: %d; Key: %d\n", nonce, key)
@@ -246,9 +247,11 @@ func encryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 	for {
 		n, err := src.Read(buf)
 		if err != nil && err != io.EOF {
+			log.Printf("ET: Error reading from %v: %v", buf, err)
 			return err
 		}
 		if n == 0 {
+			log.Printf("ET: Break because n=0")
 			break
 		}
 		log.Printf("Before Encrypted %s\n", string(buf[:n]))
@@ -256,15 +259,17 @@ func encryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 		log.Printf("After Encrypted %d\n", encrypted)
 		_, err = dst.Write(encrypted)
 		if err != nil {
+			log.Printf("ET: Error writing %v: %v", buf, err)
 			return err
 		}
 
 		content = append(content, buf[:n]...)
 		if err == io.EOF {
+			log.Printf("ET: EOF")
 			break
 		}
 	}
-	fmt.Printf("Transmission Complete Copied content: %s\n", content)
+	log.Printf("Transmission Complete Copied content: %s\n", content)
 	return nil
 }
 
@@ -284,7 +289,7 @@ func decryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 			// Handle EOF error
 			log.Println("Nonce EOF reached. Ending decryption process.")
 		}
-		log.Printf("Error reading nonce: %v", err)
+		log.Printf("DT: Error reading nonce: %v", err)
 	}
 	log.Printf("Nonce: %d; Key: %d\n", nonce, key)
 	buf := make([]byte, 2468)
@@ -293,28 +298,33 @@ func decryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 	for {
 		n, err := src.Read(buf)
 		if err != nil && err != io.EOF {
+			log.Printf("DT: Error reading from %v: %v", buf, err)
 			return err
 		}
 		if n == 0 {
+			log.Printf("DT: Break because n = 0")
 			break
 		}
 		log.Printf("Before Decrypted: %d\n", buf[:n])
 		decrypted, err := gcm.Open(nil, nonce, buf[:n], nil)
 		log.Printf("After Decrypted: %s\n", decrypted)
 		if err != nil {
+			log.Printf("DT: error")
 			return err
 		}
 		_, err = dst.Write(decrypted)
 		if err != nil {
+			log.Printf("DT: write Error")
 			return err
 		}
 
 		content = append(content, buf[:n]...)
 		if err == io.EOF {
+			log.Printf("DT: EOF")
 			break
 		}
 	}
-	fmt.Printf("Transmission Complete Copied content: %s\n", content)
+	log.Printf("Transmission Complete Copied content: %s\n", content)
 	return nil
 }
 

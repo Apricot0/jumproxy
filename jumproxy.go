@@ -272,18 +272,18 @@ func decryptReader(reader io.Reader, key []byte) io.Reader {
 	}
 
 	nonceSize := gcm.NonceSize()
-	buf := make([]byte, nonceSize)
-	if _, err := io.ReadFull(reader, buf); err != nil {
-		log.Fatalf("Error reading nonce: %v", err)
-	}
-	nonce := buf[:nonceSize]
-	log.Printf("Decrypt using nonce: %d , key: %d", nonce, key)
 
 	pr, pw := io.Pipe()
 
 	go func() {
 		buf := make([]byte, 8192) // Adjust buffer size as needed
 		for {
+			nonceBuf := make([]byte, nonceSize)
+			if _, err := io.ReadFull(reader, nonceBuf); err != nil {
+				log.Fatalf("Error reading nonce: %v", err)
+			}
+			nonce := nonceBuf[:nonceSize]
+			log.Printf("Decrypt using nonce: %d , key: %d", nonce, key)
 			n, err := reader.Read(buf)
 			if err != nil && err != io.EOF {
 				pw.CloseWithError(err)

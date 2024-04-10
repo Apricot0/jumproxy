@@ -276,6 +276,7 @@ func decryptReader(reader io.Reader, key []byte) io.Reader {
 		log.Fatalf("Error reading nonce: %v", err)
 	}
 	nonce := buf[:nonceSize]
+	log.Printf("%d", nonce)
 
 	pr, pw := io.Pipe()
 
@@ -295,6 +296,7 @@ func decryptReader(reader io.Reader, key []byte) io.Reader {
 				pw.CloseWithError(errors.New("decryption error: " + err.Error()))
 				return
 			}
+
 			if _, err := pw.Write(decrypted); err != nil {
 				pw.CloseWithError(err)
 				return

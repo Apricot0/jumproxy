@@ -69,7 +69,7 @@ func main() {
 		dest := flag.Arg(0)
 		port := flag.Arg(1)
 		fmt.Printf("Running in reverse-proxy mode on port %d\n", *listenPort)
-		runReverseProxy(*listenPort, aesKey, dest, port)
+		reverseProxy(*listenPort, aesKey, dest, port)
 	} else {
 		// Otherwise, run in client mode
 		args := flag.Args()
@@ -80,7 +80,7 @@ func main() {
 		destination := args[0]
 		port := args[1]
 		fmt.Printf("Running in client mode, connecting to %s:%s\n", destination, port)
-		runClient(destination, port, aesKey)
+		client(destination, port, aesKey)
 	}
 }
 
@@ -114,8 +114,8 @@ func generateKey(passphrase string) []byte {
 	return key
 }
 
-// runReverseProxy runs jumproxy in reverse-proxy mode
-func runReverseProxy(listenPort int, key []byte, dest string, port string) {
+// reverseProxy runs jumproxy in reverse-proxy mode
+func reverseProxy(listenPort int, key []byte, dest string, port string) {
 	// Listen on the specified port
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", listenPort))
 	if err != nil {

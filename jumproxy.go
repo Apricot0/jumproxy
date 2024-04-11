@@ -62,7 +62,7 @@ func main() {
 	}
 
 	// Generate AES key using PBKDF2
-	aesKey := deriveKey(passphrase)
+	aesKey := generateKey(passphrase)
 
 	// If listenPort is provided, run in reverse-proxy mode
 	if *listenPort != 0 {
@@ -106,8 +106,8 @@ func readPassphrase(filename string) (string, error) {
 	return passphrase, nil
 }
 
-// deriveKey generates AES key using PBKDF2
-func deriveKey(passphrase string) []byte {
+// generateKey generates AES key using PBKDF2
+func generateKey(passphrase string) []byte {
 	key := pbkdf2.Key([]byte(passphrase), salt, 10000, 32, sha256.New) //32 byte, 256 bits
 	//keyHex := fmt.Sprintf("%x", key)
 	//fmt.Println("Derived Key (hex):", keyHex)
@@ -154,8 +154,8 @@ func runReverseProxy(listenPort int, key []byte, dest string, port string) {
 	}
 }
 
-// runClient runs jumproxy in client mode
-func runClient(destination string, port string, key []byte) {
+// client runs jumproxy in client mode
+func client(destination string, port string, key []byte) {
 	fmt.Printf("Connecting to %s\n", destination)
 
 	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", destination, port))

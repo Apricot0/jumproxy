@@ -214,14 +214,14 @@ func handleConnection(conn net.Conn, dest string, port string, key []byte) {
 		//_, err := io.Copy(serverConn, decryptReader(conn, key))
 		err := decryptTransmission(conn, serverConn, key)
 		if err != nil {
-			fmt.Printf("Error copying data from client to server: %v\n", err)
+			log.Printf("Error copying data from client to server: %v\n", err)
 		}
 	}()
 
 	//_, err = io.Copy(conn, encryptReader(serverConn, key))
 	err = encryptTransmission(serverConn, conn, key)
 	if err != nil {
-		fmt.Printf("Error copying data from server to client: %v\n", err)
+		log.Printf("Error copying data from server to client: %v\n", err)
 	}
 }
 
@@ -279,7 +279,7 @@ func encryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 			log.Printf("ET: Error writing %v: %v", buf, err)
 			return err
 		}
-		log.Printf("DT:Reader --%d--> Writer", len(encrypted))
+		log.Printf("ET:Reader --%d--> Writer", len(encrypted))
 
 		content = append(content, buf[:n]...)
 		if err == io.EOF {

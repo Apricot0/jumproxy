@@ -66,8 +66,10 @@ func main() {
 
 	// If listenPort is provided, run in reverse-proxy mode
 	if *listenPort != 0 {
+		dest := flag.Arg(0)
+		port := flag.Arg(1)
 		fmt.Printf("Running in reverse-proxy mode on port %d\n", *listenPort)
-		runReverseProxy(*listenPort, aesKey)
+		runReverseProxy(*listenPort, aesKey, dest, port)
 	} else {
 		// Otherwise, run in client mode
 		args := flag.Args()
@@ -113,7 +115,7 @@ func deriveKey(passphrase string) []byte {
 }
 
 // runReverseProxy runs jumproxy in reverse-proxy mode
-func runReverseProxy(listenPort int, key []byte) {
+func runReverseProxy(listenPort int, key []byte, dest string, port string) {
 	// Listen on the specified port
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", listenPort))
 	if err != nil {
@@ -128,6 +130,18 @@ func runReverseProxy(listenPort int, key []byte) {
 		}
 	}()
 
+	serverConn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", dest, port))
+	if err != nil {
+		fmt.Printf("Error connecting to server: %v\n", err)
+		return
+	}
+	defer func(serverConn net.Conn) {
+		err := serverConn.Close()
+		if err != nil {
+			fmt.Printf("Error closing server connection: %v\n", err)
+		}
+	}(serverConn)
+
 	// Accept incoming connections in a loop
 	for {
 		conn, err := listener.Accept()
@@ -136,7 +150,7 @@ func runReverseProxy(listenPort int, key []byte) {
 			continue
 		}
 		// Handle each connection concurrently
-		go handleConnection(conn, key)
+		go handleConnection(conn, serverConn, key)
 	}
 }
 
@@ -176,7 +190,7 @@ func runClient(destination string, port string, key []byte) {
 }
 
 // handleConnection handles an incoming connection in reverse-proxy mode
-func handleConnection(conn net.Conn, key []byte) {
+func handleConnection(conn net.Conn, serverConn net.Conn, key []byte) {
 	fmt.Printf("received connection from %s\n", conn.RemoteAddr())
 
 	defer func(conn net.Conn) {
@@ -187,20 +201,6 @@ func handleConnection(conn net.Conn, key []byte) {
 		fmt.Printf("Connection closed with %s\n", conn.RemoteAddr())
 	}(conn)
 
-	destination := flag.Arg(0)
-	port := flag.Arg(1)
-	serverConn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", destination, port))
-	if err != nil {
-		fmt.Printf("Error connecting to server: %v\n", err)
-		return
-	}
-	defer func(serverConn net.Conn) {
-		err := serverConn.Close()
-		if err != nil {
-			fmt.Printf("Error closing server connection: %v\n", err)
-		}
-	}(serverConn)
-
 	go func() {
 		//_, err := io.Copy(serverConn, decryptReader(conn, key))
 		err := decryptTransmission(conn, serverConn, key)
@@ -210,7 +210,7 @@ func handleConnection(conn net.Conn, key []byte) {
 	}()
 
 	//_, err = io.Copy(conn, encryptReader(serverConn, key))
-	err = encryptTransmission(serverConn, conn, key)
+	err := encryptTransmission(serverConn, conn, key)
 	if err != nil {
 		fmt.Printf("Error copying data from server to client: %v\n", err)
 	}

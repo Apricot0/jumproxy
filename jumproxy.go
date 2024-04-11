@@ -37,34 +37,40 @@ func init() {
 }
 
 func main() {
+	usage := `go run jumproxy.go [-l listenport] -k pwdfile destination port
+
+  -l  Reverse-proxy mode: listen for inbound connections on <listenport> and
+      relay them to <destination>:<port>
+
+  -k  Use the ASCII text passphrase contained in <pwdfile>`
 	defer func(logFile *os.File) {
 		err := logFile.Close()
 		if err != nil {
 
 		}
 	}(logFile)
-	// Command-line flag definitions
+	// define command-line
 	listenPort := flag.Int("l", 0, "Listen port for reverse-proxy mode")
 	keyFile := flag.String("k", "", "Path to file containing the passphrase")
 	flag.Parse()
 
-	// Check if the key file is provided
+	// check the key file
 	if *keyFile == "" {
-		fmt.Println("Error: Passphrase file not provided.")
+		fmt.Printf("Error: Passphrase file not provided.\n%s\n", usage)
 		return
 	}
 
-	// Read the passphrase from the key file
+	// read the passphrase
 	passphrase, err := readPassphrase(*keyFile)
 	if err != nil {
 		fmt.Printf("Error reading passphrase: %v\n", err)
 		return
 	}
 
-	// Generate AES key using PBKDF2
+	// generate AES key using PBKDF2
 	aesKey := generateKey(passphrase)
 
-	// If listenPort is provided, run in reverse-proxy mode
+	// if listenPort is provided, run in reverse-proxy mode
 	if *listenPort != 0 {
 		dest := flag.Arg(0)
 		port := flag.Arg(1)
@@ -74,7 +80,7 @@ func main() {
 		// Otherwise, run in client mode
 		args := flag.Args()
 		if len(args) != 2 {
-			fmt.Println("Usage: go run jumproxy.go [-l listenport] -k pwdfile destination port")
+			fmt.Printf("%s\n", usage)
 			return
 		}
 		destination := args[0]
@@ -84,7 +90,7 @@ func main() {
 	}
 }
 
-// readPassphrase reads the passphrase from the given file
+// reads the passphrase from the given file
 func readPassphrase(filename string) (string, error) {
 	file, err := os.Open(filename)
 	if err != nil {
@@ -106,7 +112,7 @@ func readPassphrase(filename string) (string, error) {
 	return passphrase, nil
 }
 
-// generateKey generates AES key using PBKDF2
+// generates AES key using PBKDF2
 func generateKey(passphrase string) []byte {
 	key := pbkdf2.Key([]byte(passphrase), salt, 10000, 32, sha256.New) //32 byte, 256 bits
 	//keyHex := fmt.Sprintf("%x", key)
@@ -114,9 +120,9 @@ func generateKey(passphrase string) []byte {
 	return key
 }
 
-// reverseProxy runs jumproxy in reverse-proxy mode
+// runs jumproxy in reverse-proxy mode
 func reverseProxy(listenPort int, key []byte, dest string, port string) {
-	// Listen on the specified port
+	// listen on the specified port
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", listenPort))
 	if err != nil {
 		log.Printf("Error listening: %v\n", err)
@@ -125,22 +131,11 @@ func reverseProxy(listenPort int, key []byte, dest string, port string) {
 	// Defer closing the listener to ensure it's closed when the function exits
 	defer func() {
 		err := listener.Close()
+		log.Printf("Listener closed.\n")
 		if err != nil {
 			log.Printf("Error closing listener: %v\n", err)
 		}
 	}()
-
-	serverConn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", dest, port))
-	if err != nil {
-		fmt.Printf("Error connecting to server: %v\n", err)
-		return
-	}
-	defer func(serverConn net.Conn) {
-		err := serverConn.Close()
-		if err != nil {
-			fmt.Printf("Error closing server connection: %v\n", err)
-		}
-	}(serverConn)
 
 	// Accept incoming connections in a loop
 	for {
@@ -150,7 +145,7 @@ func reverseProxy(listenPort int, key []byte, dest string, port string) {
 			continue
 		}
 		// Handle each connection concurrently
-		go handleConnection(conn, serverConn, key)
+		go handleConnection(conn, dest, port, key)
 	}
 }
 
@@ -190,15 +185,29 @@ func client(destination string, port string, key []byte) {
 }
 
 // handleConnection handles an incoming connection in reverse-proxy mode
-func handleConnection(conn net.Conn, serverConn net.Conn, key []byte) {
-	fmt.Printf("received connection from %s\n", conn.RemoteAddr())
+func handleConnection(conn net.Conn, dest string, port string, key []byte) {
+	fmt.Printf("Received connection from %s\n", conn.RemoteAddr())
+	log.Printf("Received connection from %s\n", conn.RemoteAddr())
+	serverConn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", dest, port))
+	if err != nil {
+		fmt.Printf("Error connecting to server: %v\n", err)
+		return
+	}
+	log.Printf("Successfully connected to %s\n", conn.RemoteAddr())
+	defer func(serverConn net.Conn) {
+		err := serverConn.Close()
+		if err != nil {
+			fmt.Printf("Error closing server connection: %v\n", err)
+		}
+		log.Printf("Connection closed with server: %s\n", serverConn.RemoteAddr())
+	}(serverConn)
 
 	defer func(conn net.Conn) {
 		err := conn.Close()
 		if err != nil {
 			fmt.Printf("Error closing client connection: %v\n", err)
 		}
-		fmt.Printf("Connection closed with %s\n", conn.RemoteAddr())
+		fmt.Printf("Connection closed with client: %s\n", conn.RemoteAddr())
 	}(conn)
 
 	go func() {
@@ -210,7 +219,7 @@ func handleConnection(conn net.Conn, serverConn net.Conn, key []byte) {
 	}()
 
 	//_, err = io.Copy(conn, encryptReader(serverConn, key))
-	err := encryptTransmission(serverConn, conn, key)
+	err = encryptTransmission(serverConn, conn, key)
 	if err != nil {
 		fmt.Printf("Error copying data from server to client: %v\n", err)
 	}
@@ -241,7 +250,7 @@ func encryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 		log.Printf("ET: Error writing nonce: %v", err)
 		return err
 	}
-	log.Printf("Nonce: %d; Key: %d\n", nonce, key)
+	log.Printf("Starting encryption transmission...")
 	buf := make([]byte, 2468)
 	var content []byte
 
@@ -255,9 +264,9 @@ func encryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 			log.Printf("ET: Break because n=0")
 			break
 		}
-		log.Printf("Before Encrypted %s\n", string(buf[:n]))
+		//log.Printf("Before Encrypted %s\n", string(buf[:n]))
 		encrypted := gcm.Seal(nil, nonce, buf[:n], nil)
-		log.Printf("After Encrypted %d\n", encrypted)
+		//log.Printf("After Encrypted %d\n", encrypted)
 		encryptedSize := make([]byte, 8) // Assuming 64-bit integer for size
 		binary.BigEndian.PutUint64(encryptedSize, uint64(len(encrypted)))
 		_, err = dst.Write(encryptedSize)
@@ -270,6 +279,7 @@ func encryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 			log.Printf("ET: Error writing %v: %v", buf, err)
 			return err
 		}
+		log.Printf("DT:Reader --%d--> Writer", len(encrypted))
 
 		content = append(content, buf[:n]...)
 		if err == io.EOF {
@@ -277,7 +287,7 @@ func encryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 			break
 		}
 	}
-	log.Printf("Transmission Complete Copied content: %s\n", content)
+	log.Printf("Encrypt transmission Complete Copied content: %d\n", len(content))
 	return nil
 }
 
@@ -299,7 +309,8 @@ func decryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 		}
 		log.Printf("DT: Error reading nonce: %v", err)
 	}
-	log.Printf("Nonce: %d; Key: %d\n", nonce, key)
+	//log.Printf("Nonce: %d; Key: %d\n", nonce, key)
+	log.Printf("Starting decryption transmission...")
 	//buf := make([]byte, 2468)
 	buf := make([]byte, 8)
 	var content []byte
@@ -317,11 +328,9 @@ func decryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 		encryptedSize := binary.BigEndian.Uint64(buf)
 		encrypted := make([]byte, encryptedSize)
 		_, err = io.ReadFull(src, encrypted)
-		//log.Printf("Before Decrypted: %d\n", buf[:n])
-		log.Printf("Before Decrypted: %d\n", encrypted)
-		//decrypted, err := gcm.Open(nil, nonce, buf[:n], nil)
+		//log.Printf("Before Decrypted: %d\n", encrypted)
 		decrypted, err := gcm.Open(nil, nonce, encrypted, nil)
-		log.Printf("After Decrypted: %s\n", decrypted)
+		//log.Printf("After Decrypted: %s\n", decrypted)
 		if err != nil {
 			log.Printf("DT: error")
 			return err
@@ -331,6 +340,7 @@ func decryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 			log.Printf("DT: write Error")
 			return err
 		}
+		log.Printf("DT:Writer <--%d-- Reader", len(decrypted))
 
 		content = append(content, buf[:n]...)
 		if err == io.EOF {
@@ -338,7 +348,7 @@ func decryptTransmission(src io.Reader, dst io.Writer, key []byte) error {
 			break
 		}
 	}
-	log.Printf("Transmission Complete Copied content: %s\n", content)
+	log.Printf("Decrypt transmission complete Copied content: %d\n", len(content))
 	return nil
 }
 
